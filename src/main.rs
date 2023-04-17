@@ -1,8 +1,12 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{collections::{BTreeMap, BTreeSet}, io::BufRead, num::ParseIntError};
 
 use itertools::Itertools;
 
-fn solve(input: Vec<(&str, u32)>, solution: &[u32]) -> String {
+///
+/// Solve the crypto puzzle
+///
+///
+fn solve(input: &[(&str, u32)], solution: &[u32]) -> String {
     // Build symbol table
     let mut symbols = BTreeSet::new();
     input.iter().for_each(|(i, _)| {
@@ -11,58 +15,153 @@ fn solve(input: Vec<(&str, u32)>, solution: &[u32]) -> String {
         })
     });
 
-    let symbol_index = symbols
-        .iter()
-        .enumerate()
-        .map(|(i, c)| (*c, i))
-        .collect::<BTreeMap<char, usize>>();
+    let sym_len = symbols.len();
+    let mut candidates = BTreeMap::new();
+    for &s in &symbols {
+        candidates.insert(s, BTreeSet::from_iter(1..=sym_len));
+    }
 
-    dbg!(&symbols.len());
+    dbg!(sym_len);
 
-    // B
-    let b = input.iter().map(|(_, b)| *b).collect::<Vec<_>>();
+    // Extract sum of each row
+    let row_sum = input.iter().map(|(_, b)| *b).collect::<Vec<_>>();
 
-    // Setup A (input.len() x symbols.len())
-    let mut a = vec![];
+    // Translate input strings
+    let mut translated_symbols = vec![];
     for (i, _) in input {
-        let mut a_in = (0..symbols.len()).map(|_| 0).collect::<Vec<_>>();
+        let mut a_in = BTreeMap::new();
         for c in i.to_uppercase().chars() {
-            a_in[symbol_index[&c]] += 1;
+            let e: &mut u32 = a_in.entry(c).or_default();
+            *e += 1;
         }
-        a.push(a_in);
+        translated_symbols.push(a_in);
     }
 
-    let sym_vec: Vec<char> = Vec::from_iter(symbols);
-    for p in (0..sym_vec.len()).permutations(sym_vec.len()) {
-        if check_solution(&a, &p, &b) {
-            return solution
+    // FIXME: 20 is nonsense. Do until all candidates have only single value left.
+    // while &candidates.values().all(|x| x.len() == 1) {
+    for u in 0..20 {
+        dbg!(u);
+        print_candidates(&candidates);
+
+        reduce_by_max_value(&mut candidates, &row_sum, &translated_symbols);
+
+        remove_hidden_tuples(&mut candidates, input);
+
+    }
+
+    // Convert list of numbers from solution to characters
+    solution
+        .iter()
+        .map(|&x| {
+            candidates
                 .iter()
-                .map(|&sym| p.iter().position(|&x| x as u32 == sym).unwrap())
-                .map(|x| sym_vec[x])
-                .collect::<String>()
-                .to_uppercase();
-        }
-    }
-
-    "".to_owned()
+                .find_map(|(c, cand)| {
+                    if cand.contains(&(x as usize)) { // TOOD maybe better first()
+                        Some(*c)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap()
+        })
+        .collect::<String>()
+        .to_uppercase()
 }
 
-fn check_solution(a: &Vec<Vec<u32>>, x: &Vec<usize>, b: &Vec<u32>) -> bool {
-    for row in 0..a.len() {
-        if a[row]
-            .iter()
-            .zip(x)
-            .map(|(a, x)| a * (*x as u32))
-            .sum::<u32>()
-            != b[row]
+///
+/// Reduce candidates by looking into each row and calculate if the lowest values possible are more than b
+///
+///
+fn reduce_by_max_value(
+    candidates: &mut BTreeMap<char, BTreeSet<usize>>,
+    row_sum: &[u32],
+    translated_symbols: &[BTreeMap<char, u32>],
+) {
+    // Reduce candidates
+    // Multiply minimum of others candidates and add them up.
+    // This sum - b is the maximum of candidate values for current symbol.
+    // Go through all input strings
+    for (i, ast) in translated_symbols.iter().enumerate() {
+        for cs in ast.keys() {
+            // .permutations(ast.len())
+            // Add all character values times occurrence of characters and subtract the current one again
+            // FIXME: candidates cannot take same value, but there are multiple combinations in which they can take their lowest values
+            let rowsum: u32 = ast
+                .iter()
+                .map(|(x, &v)| -> u32 { *candidates[x].iter().min().unwrap() as u32 * v })
+                .sum::<u32>()
+                - *candidates[cs].iter().min().unwrap() as u32 * ast[cs]; // unwraps ok, since there is always a first entry and numbers are small enough.
+            let max = row_sum[i] - rowsum;
+            candidates
+                .get_mut(cs)
+                .unwrap()
+                .retain(|&v| ast[cs] * (v as u32) < max); // unwrap ok, since key exists
+        }
+    }
+}
+
+/// 
+/// Print current candidates list
+/// 
+fn print_candidates(candidates: &BTreeMap<char, BTreeSet<usize>>) {
+    for (c, cs) in candidates.iter().sorted_by(|a, b| Ord::cmp(a.0, b.0)) {
+        println!("{c} : {}", cs.iter().join(","));
+    }
+}
+
+///
+///  Find hidden tuples
+/// 
+///  tuple length 1 is the special case where a symbol has been identified.
+///
+fn remove_hidden_tuples(candidates: &mut BTreeMap<char, BTreeSet<usize>>, input: &[(&str, u32)]) {
+    // Start from highest value to remove largest tuple first
+    for tuple_len in (1..input.len()).rev() {
+        if candidates
+            .values()
+            .filter(|p| p.len() == tuple_len)
+            .all_equal()
         {
-            return false;
+            // Number of hidden tuple has to match the length of the tuple
+            if candidates.values().filter(|p| p.len() == tuple_len).count() == tuple_len {
+                let toberemoved = candidates
+                    .values()
+                    .find(|x| x.len() == tuple_len)
+                    .unwrap() // unwrap ok, since checked in if above
+                    .clone();
+                // Remove tuple from those that do not exactly match the tuple
+                for cands in candidates
+                    .values_mut()
+                    .filter(|p| toberemoved.symmetric_difference(p).count() != 0)
+                {
+                    for tbr in &toberemoved {
+                        cands.remove(tbr);
+                    }
+                }
+            }
         }
     }
-    true
 }
 
-fn main() {}
+///
+/// Entry point into program
+/// 
+/// 
+fn main() -> Result<(),ParseIntError> {
+    let mut lines = std::io::stdin().lock().lines();
+    
+    if let Some(Ok(line)) = lines.next() {
+        let solution = line.split(',').map(|x| x.parse::<u32>().unwrap()).collect::<Vec<u32>>();
+        let mut input = vec![];
+        while let Some(Ok(line)) = lines.next() {
+            let inp = line.split(&[',', ' ']).collect::<Vec<_>>();
+            input.push((inp[0].to_owned(), inp[1].parse::<u32>()?));
+        }
+        let input = input.iter().map(|(a, b)| (a.as_str(), *b)).collect::<Vec<_>>();
+        println!("{}", solve(&input, &solution));
+    }
+    Ok(())
+}
 
 #[cfg(test)]
 mod test {
@@ -94,7 +193,7 @@ mod test {
 
         let solution = [9, 16, 7, 2, 6, 8, 16, 6, 22];
 
-        let s = solve(input, &solution);
+        let s = solve(&input, &solution);
         assert_eq!(s, "FOXTROTT");
     }
 }
