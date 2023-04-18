@@ -1,4 +1,8 @@
-use std::{collections::{BTreeMap, BTreeSet}, io::BufRead, num::ParseIntError};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    io::BufRead,
+    num::ParseIntError,
+};
 
 use itertools::Itertools;
 
@@ -39,14 +43,14 @@ fn solve(input: &[(&str, u32)], solution: &[u32]) -> String {
 
     // FIXME: 20 is nonsense. Do until all candidates have only single value left.
     // while &candidates.values().all(|x| x.len() == 1) {
-    for u in 0..20 {
+    // Optimization would be if all numbers from "solution" array are resolved.
+    for u in 0..10 {
         dbg!(u);
         print_candidates(&candidates);
 
         reduce_by_max_value(&mut candidates, &row_sum, &translated_symbols);
 
         remove_hidden_tuples(&mut candidates, input);
-
     }
 
     // Convert list of numbers from solution to characters
@@ -56,7 +60,8 @@ fn solve(input: &[(&str, u32)], solution: &[u32]) -> String {
             candidates
                 .iter()
                 .find_map(|(c, cand)| {
-                    if cand.contains(&(x as usize)) { // TOOD maybe better first()
+                    if cand.contains(&(x as usize)) {
+                        // TOOD maybe better first()
                         Some(*c)
                     } else {
                         None
@@ -81,28 +86,47 @@ fn reduce_by_max_value(
     // Multiply minimum of others candidates and add them up.
     // This sum - b is the maximum of candidate values for current symbol.
     // Go through all input strings
-    for (i, ast) in translated_symbols.iter().enumerate() {
-        for cs in ast.keys() {
-            // .permutations(ast.len())
-            // Add all character values times occurrence of characters and subtract the current one again
-            // FIXME: candidates cannot take same value, but there are multiple combinations in which they can take their lowest values
-            let rowsum: u32 = ast
-                .iter()
-                .map(|(x, &v)| -> u32 { *candidates[x].iter().min().unwrap() as u32 * v })
-                .sum::<u32>()
-                - *candidates[cs].iter().min().unwrap() as u32 * ast[cs]; // unwraps ok, since there is always a first entry and numbers are small enough.
-            let max = row_sum[i] - rowsum;
+    for (i, frequencies) in translated_symbols.iter().enumerate() {
+        dbg!(format!("{}", frequencies.keys().join("")));
+        let mut orderedfrequencies = Vec::from_iter(frequencies);
+        orderedfrequencies.sort_by(|x, y| x.1.cmp(y.1).reverse());
+        // Loop over all characters in input string starting with the most frequent
+        // and see what the maximum value is it can take
+        // if the others take their current minimum value
+        // taking into account that they all have to have different values
+        for (cs, _) in &orderedfrequencies {
+            let mut selectedcands: BTreeMap<char, usize> = BTreeMap::new();
+            let mut max = 0;
+
+            // Add the other minima taking into account the already chosen values
+            // Since they are ordered by their frequency (which is in turn the factor for their value)
+            for (x, &v) in &orderedfrequencies {
+                if x != cs {
+                    if let Some(curcand) = candidates[x]
+                        .iter()
+                        .filter(|f| !selectedcands.values().contains(f))
+                        .min()
+                    {
+                        max += *curcand as u32 * v;
+                        selectedcands.insert(**x, *curcand);
+                    }
+                }
+            }
+
             candidates
-                .get_mut(cs)
-                .unwrap()
-                .retain(|&v| ast[cs] * (v as u32) < max); // unwrap ok, since key exists
+                .get_mut(&cs)
+                .unwrap() // unwrap ok, since key definitely exists
+                .retain(|&v| {
+                    (frequencies[&cs] * (v as u32) + max <= row_sum[i])
+                        || selectedcands.values().contains(&v)
+                });
         }
     }
 }
 
-/// 
+///
 /// Print current candidates list
-/// 
+///
 fn print_candidates(candidates: &BTreeMap<char, BTreeSet<usize>>) {
     for (c, cs) in candidates.iter().sorted_by(|a, b| Ord::cmp(a.0, b.0)) {
         println!("{c} : {}", cs.iter().join(","));
@@ -111,7 +135,7 @@ fn print_candidates(candidates: &BTreeMap<char, BTreeSet<usize>>) {
 
 ///
 ///  Find hidden tuples
-/// 
+///
 ///  tuple length 1 is the special case where a symbol has been identified.
 ///
 fn remove_hidden_tuples(candidates: &mut BTreeMap<char, BTreeSet<usize>>, input: &[(&str, u32)]) {
@@ -145,19 +169,25 @@ fn remove_hidden_tuples(candidates: &mut BTreeMap<char, BTreeSet<usize>>, input:
 
 ///
 /// Entry point into program
-/// 
-/// 
-fn main() -> Result<(),ParseIntError> {
+///
+///
+fn main() -> Result<(), ParseIntError> {
     let mut lines = std::io::stdin().lock().lines();
-    
+
     if let Some(Ok(line)) = lines.next() {
-        let solution = line.split(',').map(|x| x.parse::<u32>().unwrap()).collect::<Vec<u32>>();
+        let solution = line
+            .split(',')
+            .map(|x| x.parse::<u32>().unwrap())
+            .collect::<Vec<u32>>();
         let mut input = vec![];
         while let Some(Ok(line)) = lines.next() {
             let inp = line.split(&[',', ' ']).collect::<Vec<_>>();
             input.push((inp[0].to_owned(), inp[1].parse::<u32>()?));
         }
-        let input = input.iter().map(|(a, b)| (a.as_str(), *b)).collect::<Vec<_>>();
+        let input = input
+            .iter()
+            .map(|(a, b)| (a.as_str(), *b))
+            .collect::<Vec<_>>();
         println!("{}", solve(&input, &solution));
     }
     Ok(())
