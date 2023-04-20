@@ -236,12 +236,15 @@ fn main() -> Result<(), ParseIntError> {
 
     if let Some(Ok(line)) = lines.next() {
         let solution: Vec<u32> = line
-            .split(',')
+            .split_whitespace()
             .map(|x| x.parse::<u32>())
             .collect::<Result<Vec<u32>, ParseIntError>>()?;
         let mut input = vec![];
         while let Some(Ok(line)) = lines.next() {
-            let inp = line.split(&[',', ' ']).collect::<Vec<_>>();
+            if line.is_empty() {
+                break;
+            }
+            let inp = line.split_whitespace().collect::<Vec<_>>();
             input.push((inp[0].to_owned(), inp[1].parse::<u32>()?));
         }
         let input = input
@@ -256,9 +259,55 @@ fn main() -> Result<(), ParseIntError> {
 
 #[cfg(test)]
 mod test {
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        io::Write,
+        process::{Command, Stdio},
+    };
 
     use crate::{get_real_subsets, solve, translate_into_symbols};
+
+    #[test]
+    fn backbackpuzzle1() -> Result<(), std::io::Error> {
+        let inputtxt = concat!(
+            "9 16 7 2 6 18 6 22\n",
+            "BOOGIE  58\n",
+            "BOSSANOVA  66\n",
+            "CHACHACHA  18\n",
+            "CHARLESTON  76\n",
+            "FLAMENCO  62\n",
+            "FOXTROTT  102\n",
+            "JIVE  69\n",
+            "LAMBADA  29\n",
+            "MAMBO  20\n",
+            "PASODOBLE  63\n",
+            "QUICKSTEP  118\n",
+            "ROCKNROLL  88\n",
+            "RUMBA  43\n",
+            "SAMBA  18\n",
+            "SHIMMY  59\n",
+            "SIRTAKI  83\n",
+            "TANGO  47\n",
+            "TWIST  68\n",
+            "WALZER  80\n",
+            "\n"
+        );
+
+        let mut child = Command::new("cargo")
+            .args(["run", "--"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()?;
+
+        let mut stdin = child.stdin.take().unwrap();
+        std::thread::spawn(move || {
+            stdin.write_all(inputtxt.as_bytes()).unwrap();
+        });
+
+        let output = child.wait_with_output()?;
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "DISCOFOX\n");
+        Ok(())
+    }
 
     #[test]
     fn puzzle1() {
