@@ -4,8 +4,6 @@ use std::{
     num::ParseIntError,
 };
 
-use itertools::Itertools;
-
 ///
 /// Solve the crypto puzzle
 ///
@@ -47,9 +45,9 @@ fn solve(input: &[(&str, u32)], solution: &[u32]) -> String {
     for u in 0..12 {
         dbg!(u);
         print_candidates(&candidates);
-        
+
         reduce_by_max_value(&mut candidates, &row_sum, &translated_symbols);
-        
+
         println!("After reduce_by_max_value");
         print_candidates(&candidates);
 
@@ -124,7 +122,7 @@ fn reduce_by_max_value(
                 if x != cs {
                     if let Some(curcand) = candidates[x]
                         .iter()
-                        .filter(|f| !selectedcands.values().contains(f))
+                        .filter(|f| !selectedcands.values().any(|&v| v == **f))
                         .min()
                     {
                         max += *curcand as u32 * v;
@@ -138,7 +136,7 @@ fn reduce_by_max_value(
                 .unwrap() // unwrap ok, since key definitely exists
                 .retain(|&v| {
                     (frequencies[cs] * (v as u32) + max <= row_sum[i])
-                        || selectedcands.values().contains(&v)
+                        || selectedcands.values().any(|&f| v == f)
                 });
         }
     }
@@ -148,8 +146,16 @@ fn reduce_by_max_value(
 /// Print current candidates list
 ///
 fn print_candidates(candidates: &BTreeMap<char, BTreeSet<usize>>) {
-    for (c, cs) in candidates.iter().sorted_by(|a, b| Ord::cmp(a.0, b.0)) {
-        println!("{c} : {}", cs.iter().join(","));
+    let mut sorted_candidates = Vec::from_iter(candidates);
+    sorted_candidates.sort_by(|a, b| Ord::cmp(a.0, b.0));
+    for (c, cs) in sorted_candidates {
+        println!(
+            "{c} : {}",
+            cs.iter()
+                .map(|x| x.to_string())
+                .collect::<Vec<String>>()
+                .join(",")
+        );
     }
 }
 
@@ -213,7 +219,8 @@ fn get_real_subsets(
 ///
 fn remove_hidden_tuples(candidates: &mut BTreeMap<char, BTreeSet<usize>>, input: &[(&str, u32)]) {
     // Start from highest value to remove largest tuple first
-    for tuple_len in (2..input.len()-1).rev() { // -1 because it does not make sense to start with all tuples
+    for tuple_len in (2..input.len() - 1).rev() {
+        // -1 because it does not make sense to start with all tuples
         let subsets = get_real_subsets(candidates, tuple_len);
         for subset in subsets {
             // Number of symbols has to match the number of tuples to be a hidden tuple
@@ -311,12 +318,7 @@ mod test {
         candidates.insert('f', BTreeSet::from([2, 4, 7, 8, 9]));
 
         let res = get_real_subsets(&candidates, tuple_len);
-        assert_eq!(
-            res,
-            vec![
-                BTreeSet::from(['a', 'b', 'c']),
-            ]
-        );
+        assert_eq!(res, vec![BTreeSet::from(['a', 'b', 'c']),]);
     }
 
     #[test]
