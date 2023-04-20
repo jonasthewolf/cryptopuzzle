@@ -8,22 +8,20 @@ use std::{
 /// Solve the crypto puzzle
 ///
 ///
-fn solve(input: &[(&str, u32)], solution: &[u32]) -> String {
+fn solve(input: &[(&str, u32)]) -> BTreeMap<char, u32> {
     // Build symbol table
     let mut symbols = BTreeSet::new();
-    input.iter().for_each(|(i, _)| {
-        i.to_uppercase().chars().for_each(|c| {
+    input.iter().for_each(|(word, _)| {
+        word.to_uppercase().chars().for_each(|c| {
             symbols.insert(c);
         })
     });
 
     let sym_len = symbols.len();
     let mut candidates = BTreeMap::new();
-    for &s in &symbols {
+    symbols.iter().for_each(|&s| {
         candidates.insert(s, BTreeSet::from_iter(1..=sym_len));
-    }
-
-    dbg!(sym_len);
+    });
 
     // Extract sum of each row
     let row_sum = input.iter().map(|(_, b)| *b).collect::<Vec<_>>();
@@ -39,54 +37,56 @@ fn solve(input: &[(&str, u32)], solution: &[u32]) -> String {
         translated_symbols.push(a_in);
     }
 
-    // FIXME: 20 is nonsense. Do until all candidates have only single value left.
-    // while &candidates.values().all(|x| x.len() == 1) {
-    // Optimization would be if all numbers from "solution" array are resolved.
-    for u in 0..12 {
-        dbg!(u);
-        print_candidates(&candidates);
-
+    // Do until all candidates have only single value left.
+    while !candidates.values().all(|x| x.len() == 1) {
+        // Optimization would be if all numbers from "solution" array are resolved.
+        // for u in 0..12 {
         reduce_by_max_value(&mut candidates, &row_sum, &translated_symbols);
-
-        println!("After reduce_by_max_value");
-        print_candidates(&candidates);
 
         remove_hidden_tuples(&mut candidates, input);
 
         remove_singles(&mut candidates);
     }
 
+    candidates
+        .iter()
+        .map(|(c, s)| (*c, (*s.first().unwrap()) as u32)) // unwrap ok, since while above would not have terminated otherwise
+        .collect::<BTreeMap<char, u32>>()
+}
+
+///
+/// Translate remaining candidates into string
+///
+///
+fn translate_into_symbols(candidates: &BTreeMap<char, u32>, solution: &[u32]) -> String {
     // Convert list of numbers from solution to characters
     solution
         .iter()
         .map(|&x| {
             candidates
                 .iter()
-                .find_map(|(c, cand)| {
-                    if cand.contains(&(x as usize)) {
-                        // TOOD maybe better first()
-                        Some(*c)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap()
+                .find_map(|(c, &num)| if num == x { Some(*c) } else { None })
+                .unwrap() // unwrap ok, since we expect that puzzle is solved.
         })
         .collect::<String>()
         .to_uppercase()
 }
 
+///
+/// Remove identified values (i.e. a symbol has only a single remaining value) from other symbols candidates
+///
+///
 fn remove_singles(candidates: &mut BTreeMap<char, BTreeSet<usize>>) {
-    let mut toberemoved = vec![];
-    candidates.iter().for_each(|(ccand, cands)| {
-        if cands.len() == 1 {
-            toberemoved.push((*ccand, *cands.first().unwrap()));
+    let mut to_be_removed = vec![];
+    candidates.iter().for_each(|(cand_char, cand_set)| {
+        if cand_set.len() == 1 {
+            to_be_removed.push((*cand_char, *cand_set.first().unwrap())); // unwrap ok, since if there are empty sets, the whole algorithm is not working correctly anyway
         }
     });
-    for (tbrc, tbrv) in toberemoved {
+    for (tbr_char, tbr_value) in to_be_removed {
         candidates.iter_mut().for_each(|(c, v)| {
-            if *c != tbrc {
-                v.remove(&tbrv);
+            if *c != tbr_char {
+                v.remove(&tbr_value);
             }
         });
     }
@@ -145,7 +145,9 @@ fn reduce_by_max_value(
 ///
 /// Print current candidates list
 ///
-fn print_candidates(candidates: &BTreeMap<char, BTreeSet<usize>>) {
+/// Debugging purposes only
+///
+fn _print_candidates(candidates: &BTreeMap<char, BTreeSet<usize>>) {
     let mut sorted_candidates = Vec::from_iter(candidates);
     sorted_candidates.sort_by(|a, b| Ord::cmp(a.0, b.0));
     for (c, cs) in sorted_candidates {
@@ -160,13 +162,7 @@ fn print_candidates(candidates: &BTreeMap<char, BTreeSet<usize>>) {
 }
 
 ///
-/// Get real subsets in candidates with length tuple_len
-///
-/// TODO If two subsets are completely disjoint, the algorithm fails
-/// Actually, we are not interested if they are disjoint, however, the subsequent check
-/// if number of tuples is equal to tuple_len fails if there are disjoint sets.
-/// TODO Get the sets and see then how many of them are disjoint
-/// Example A: 2,3; B: 2,3; C: 4,5; D: 4,5; tuple_len = 2
+/// Get real subsets in candidates with at most length of tuple_len
 ///
 ///
 fn get_real_subsets(
@@ -175,47 +171,39 @@ fn get_real_subsets(
 ) -> Vec<BTreeSet<char>> {
     let tuples = candidates
         .iter()
-        .filter(|(_, p)| p.len() <= tuple_len) // && p.len() > 1) // p.len() > 1 is necessary to prevent from singletons being removed
+        .filter(|(_, p)| p.len() <= tuple_len)
         .collect::<Vec<_>>();
     let mut result: Vec<BTreeSet<char>> = Vec::new();
 
-    for (&first_char, first) in &tuples {
-        // dbg!(&first_char);
-        // dbg!(&first);
-        for (&second_char, second) in &tuples {
-            if second_char != first_char {
-                // dbg!(&set);
-                // dbg!(c);
-                if (second.is_superset(first) && first.is_subset(second))
-                    || (first.is_superset(second) && second.is_subset(first))
-                {
-                    let mut new_set = true;
-                    for set in result.iter_mut() {
-                        if set.contains(&first_char) || set.contains(&second_char) {
-                            // dbg!(first_char);
-                            // dbg!(second_char);
-                            // dbg!(&set);
-                            set.insert(first_char);
-                            set.insert(second_char);
-                            new_set = false;
-                            break;
-                        }
+    for (&first_char, first_set) in &tuples {
+        for (&second_char, second_set) in &tuples {
+            if second_char != first_char
+                && ((second_set.is_superset(first_set) && first_set.is_subset(second_set))
+                    || (first_set.is_superset(second_set) && second_set.is_subset(first_set)))
+            {
+                let mut new_set = true;
+                for set in result.iter_mut() {
+                    if set.contains(&first_char) || set.contains(&second_char) {
+                        set.insert(first_char);
+                        set.insert(second_char);
+                        new_set = false;
+                        break;
                     }
-                    if new_set {
-                        result.push(BTreeSet::from([first_char, second_char]));
-                    }
+                }
+                if new_set {
+                    result.push(BTreeSet::from([first_char, second_char]));
                 }
             }
         }
-        // dbg!(&result);
     }
     result
 }
 
 ///
-///  Find hidden tuples
+/// Find hidden tuples
 ///
-///  tuple length 1 is the special case where a symbol has been identified.
+/// Tuple length 1 is the special case where a symbol has been identified.
+/// This is treated separately.
 ///
 fn remove_hidden_tuples(candidates: &mut BTreeMap<char, BTreeSet<usize>>, input: &[(&str, u32)]) {
     // Start from highest value to remove largest tuple first
@@ -227,11 +215,11 @@ fn remove_hidden_tuples(candidates: &mut BTreeMap<char, BTreeSet<usize>>, input:
             if subset.len() == tuple_len {
                 let sub = subset
                     .iter()
-                    .flat_map(|x| candidates[x].iter().map(|z| *z))
+                    .flat_map(|x| candidates[x].iter().copied())
                     .collect::<BTreeSet<_>>();
-                for (c, cands) in candidates.iter_mut() {
-                    if !subset.contains(c) {
-                        cands.retain(|v| !sub.contains(v));
+                for (cand_char, cand_set) in candidates.iter_mut() {
+                    if !subset.contains(cand_char) {
+                        cand_set.retain(|v| !sub.contains(v));
                     }
                 }
             }
@@ -249,8 +237,8 @@ fn main() -> Result<(), ParseIntError> {
     if let Some(Ok(line)) = lines.next() {
         let solution: Vec<u32> = line
             .split(',')
-            .map(|x| x.parse::<u32>().unwrap())
-            .collect::<Vec<u32>>();
+            .map(|x| x.parse::<u32>())
+            .collect::<Result<Vec<u32>, ParseIntError>>()?;
         let mut input = vec![];
         while let Some(Ok(line)) = lines.next() {
             let inp = line.split(&[',', ' ']).collect::<Vec<_>>();
@@ -260,7 +248,8 @@ fn main() -> Result<(), ParseIntError> {
             .iter()
             .map(|(a, b)| (a.as_str(), *b))
             .collect::<Vec<_>>();
-        println!("{}", solve(&input, &solution));
+        let sol = solve(&input);
+        println!("{}", translate_into_symbols(&sol, &solution));
     }
     Ok(())
 }
@@ -269,7 +258,7 @@ fn main() -> Result<(), ParseIntError> {
 mod test {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use crate::{get_real_subsets, solve};
+    use crate::{get_real_subsets, solve, translate_into_symbols};
 
     #[test]
     fn puzzle1() {
@@ -297,11 +286,39 @@ mod test {
 
         let solution = [9, 16, 7, 2, 6, 18, 6, 22];
 
-        let s = solve(&input, &solution);
-        assert_eq!(s, "DISCOFOX");
+        let sol = solve(&input);
+        let sol_string = translate_into_symbols(&sol, &solution);
+        assert_eq!(sol_string, "DISCOFOX");
 
-        // A=1, B=5, C=2, D=9, E=10, F=18, G=15, H=3, I=16, J=23, K=17, L=8, M=4
-        // N=13, O=6, P=11, Q=24, R=14, S=7, T=12, U=19, V=20, W=21, X=22, Y=25, Z=26
+        let sol_exp = BTreeMap::from([
+            ('A', 1),
+            ('B', 5),
+            ('C', 2),
+            ('D', 9),
+            ('E', 10),
+            ('F', 18),
+            ('G', 15),
+            ('H', 3),
+            ('I', 16),
+            ('J', 23),
+            ('K', 17),
+            ('L', 8),
+            ('M', 4),
+            ('N', 13),
+            ('O', 6),
+            ('P', 11),
+            ('Q', 24),
+            ('R', 14),
+            ('S', 7),
+            ('T', 12),
+            ('U', 19),
+            ('V', 20),
+            ('W', 21),
+            ('X', 22),
+            ('Y', 25),
+            ('Z', 26),
+        ]);
+        assert_eq!(sol, sol_exp);
     }
 
     #[test]
