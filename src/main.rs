@@ -213,21 +213,20 @@ fn get_real_subsets(
 ///
 fn remove_hidden_tuples(candidates: &mut BTreeMap<char, BTreeSet<usize>>, input: &[(&str, u32)]) {
     // Start from highest value to remove largest tuple first
-    for tuple_len in (2..input.len()-1).rev() {
+    for tuple_len in (2..input.len()-1).rev() { // -1 because it does not make sense to start with all tuples
         let subsets = get_real_subsets(candidates, tuple_len);
         for subset in subsets {
-            let sub = subset
-                .iter()
-                .flat_map(|x| candidates[x].iter().map(|z| *z))
-                .collect::<BTreeSet<_>>();
-            // dbg!(&sub);
+            // Number of symbols has to match the number of tuples to be a hidden tuple
             if subset.len() == tuple_len {
+                let sub = subset
+                    .iter()
+                    .flat_map(|x| candidates[x].iter().map(|z| *z))
+                    .collect::<BTreeSet<_>>();
                 for (c, cands) in candidates.iter_mut() {
                     if !subset.contains(c) {
                         cands.retain(|v| !sub.contains(v));
                     }
                 }
-                // Number of hidden tuple has to match the length of the tuple
             }
         }
     }
@@ -289,10 +288,10 @@ mod test {
             ("WALZER", 80),
         ];
 
-        let solution = [9, 16, 7, 2, 6, 8, 16, 6, 22];
+        let solution = [9, 16, 7, 2, 6, 18, 6, 22];
 
         let s = solve(&input, &solution);
-        assert_eq!(s, "FOXTROTT");
+        assert_eq!(s, "DISCOFOX");
 
         // A=1, B=5, C=2, D=9, E=10, F=18, G=15, H=3, I=16, J=23, K=17, L=8, M=4
         // N=13, O=6, P=11, Q=24, R=14, S=7, T=12, U=19, V=20, W=21, X=22, Y=25, Z=26
