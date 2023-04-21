@@ -12,7 +12,7 @@ fn solve(input: &[(&str, u32)]) -> BTreeMap<char, u32> {
     // Build symbol table
     let mut symbols = BTreeSet::new();
     input.iter().for_each(|(word, _)| {
-        word.to_uppercase().chars().for_each(|c| {
+        word.chars().for_each(|c| {
             symbols.insert(c);
         })
     });
@@ -30,7 +30,7 @@ fn solve(input: &[(&str, u32)]) -> BTreeMap<char, u32> {
     let mut translated_symbols = vec![];
     for (i, _) in input {
         let mut a_in = BTreeMap::new();
-        for c in i.to_uppercase().chars() {
+        for c in i.chars() {
             let e: &mut u32 = a_in.entry(c).or_default();
             *e += 1;
         }
@@ -69,7 +69,6 @@ fn translate_into_symbols(candidates: &BTreeMap<char, u32>, solution: &[u32]) ->
                 .unwrap() // unwrap ok, since we expect that puzzle is solved.
         })
         .collect::<String>()
-        .to_uppercase()
 }
 
 ///
