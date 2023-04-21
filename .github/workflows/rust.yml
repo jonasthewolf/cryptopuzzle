@@ -50,6 +50,14 @@ jobs:
       run: cargo test --verbose
     - name: Release build
       run: cargo build --release --verbose
+    - name: Copy binary
+      if: hashFiles('target/release/cryptopuzzle')
+      run: |
+        cp target/release/cryptopuzzle cryptopuzzle-${{ runner.os }}
+    - name: Copy binary (Windows)
+      if: hashFiles('target/release/cryptopuzzle.exe')
+      run: |
+        copy target/release/cryptopuzzle.exe cryptopuzzle-${{ runner.os }}.exe
     - name: Upload artifact
       uses: actions/upload-artifact@v3
       with:
