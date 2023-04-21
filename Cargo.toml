@@ -2,6 +2,7 @@
 name = "cryptopuzzle"
 version = "1.0.0"
 authors = ["Jonas Wolf <jonas.wolf@jonaswolf.org>"]
+description = "Small solver for a logic puzzle"
 edition = "2021"
 license = "CC-BY-NC-SA-4.0"
 
